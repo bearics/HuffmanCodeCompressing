@@ -1,5 +1,6 @@
 #define _CRT_SECURE_NO_WARNINGS
 
+#include <fstream>
 #include <iostream>
 #include <vector>
 #include <algorithm>
@@ -29,6 +30,14 @@ public:
 	Node* left;
 	Node* right;
 
+	Node(const Node& node)
+	{
+		this->prob = node.prob;
+		this->value = node.value;
+		this->left = node.left;
+		this->right = node.right;
+	}
+
 	Node(double prob = 0, int value = 0, Node* left = NULL, Node* right = NULL)
 	{
 		this->prob = prob;
@@ -41,45 +50,38 @@ public:
 
 class HuffmanTree {
 public:
-	Node* root = new Node(0, 0);
+	vector<Node> tree;
 	vector<HuffmanCode> huffman;
 
 	void insert(Node* node)
 	{
-		Node* right = root->right;
-		Node* left = root->left;
-
+		tree.push_back(*node);
 		huffman.push_back({ node->value, new vector<bool>() });
+	}
 
-		if (root->right == NULL)
-		{	// first
-			root->right = node;
-		}	// second
-		else if(root->left == NULL)
+	void makeTree()
+	{
+		while (tree.size() > 1)
 		{
-			root->left = node;
-		}
-		else
-		{	// insert third node.
-			Node* parent = new Node(right->prob + left->prob, 0, left, right);
-
-			if (parent->prob >= node->prob)
-			{
-				root->left = parent;
-				root->right = node;
-			}
-			else
-			{
-				root->left = node;
-				root->right = parent;
-			}
+			sort( tree.begin(), tree.end(), [](const Node& n1, const Node& n2) {
+				return n1.prob > n2.prob;
+			});
+			Node* n1 = new Node(tree[tree.size() - 1]);	// smallest node
+			tree.pop_back();
+			Node* n2 = new Node(tree[tree.size() - 1]);	// second smallest node
+			tree.pop_back();
+			Node* parent = new Node(n1->prob + n2->prob, 0, n1, n2);
+			tree.push_back(*parent);
 		}
 	}
 
-	void makeHuffmanCode(Node* current, vector<bool> code)
+	void makeHuffmanCode(Node* current, vector<bool> code, bool firstTime)
 	{
+		if (firstTime)
+			code.pop_back();
+
 		unsigned char value = current->value;
-		if (current->left == NULL)
+		if (current->left == NULL && current->right == NULL)
 		{
 			auto it = find_if(huffman.begin(), huffman.end(),
 				[value](const HuffmanCode& h){return h.value == value;});
@@ -87,22 +89,13 @@ public:
 		}
 		else
 		{
+			// search left tree
+			code.push_back(false);
+			makeHuffmanCode(current->left, code, false);
+			code.pop_back();
+			// search right tree
 			code.push_back(true);
-			makeHuffmanCode(current->right, code);
-		}
-		
-
-		if (current->right == NULL)
-		{
-			auto it = find_if(huffman.begin(), huffman.end(),
-				[value](const HuffmanCode& h) {return h.value == value; });
-			*((*it).code) = code;
-		}
-		else
-		{
-			code.push_back(true);
-			makeHuffmanCode(current->left, code);
-
+			makeHuffmanCode(current->right, code, false);
 		}
 	}
 };
@@ -225,7 +218,42 @@ void main()
 			huf.insert(node);
 		}
 	}
+	huf.makeTree();
 
+	// make huffman code
+	huf.makeHuffmanCode(&huf.tree[0], { true }, true);
+
+
+	double sum = 0;
+	for (int i = 0; i < huf.huffman.size(); i++)
+	{
+		int size = 0;
+		for (int n = 0; n < 256; n++)
+		{
+			if (histogram[n].value == huf.huffman[i].value)
+			{
+				size = histogram[n].size;
+				break;
+			}
+		}
+		sum += (size / (double)(HEIGHT * WIDTH)) * (double)(huf.huffman[i].code->size());
+	}
+	cout << sum << endl;
+
+	// write mapping table.
+	ofstream outFile("mapping_table.txt");
+	for (int i = 0; i < huf.huffman.size(); i++)
+	{
+		outFile << (int)(huf.huffman[i].value) << ", ";
+		for (int n = 0; n < huf.huffman[i].code->size(); n++)
+		{
+			if ((*(huf.huffman[i].code))[n])
+				outFile << "1";
+			else
+				outFile << "0";
+		}
+		outFile << endl;
+	}
 
 
 	FileWrite("white.raw", whiteArr2D, HEIGHT, WIDTH);
