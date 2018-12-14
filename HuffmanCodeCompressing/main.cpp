@@ -1,9 +1,11 @@
 #define _CRT_SECURE_NO_WARNINGS
 
+#include <iterator>
 #include <fstream>
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <bitset>
 
 #define HEIGHT 256
 #define WIDTH 256
@@ -20,6 +22,11 @@ typedef struct Histogram {
 typedef struct HuffmanCode {
 	unsigned char value;
 	vector<bool>* code;	// 0 is false, 1 is true
+};
+
+typedef struct MapTable {
+	unsigned char value;
+	string code;
 };
 
 class Node {
@@ -195,7 +202,7 @@ void main()
 	// File Open & Memory Allocation
 
 	unsigned char** oriImg = MemAlloc2D(HEIGHT, WIDTH);
-	unsigned char** whiteArr2D = MemAlloc2D(HEIGHT, WIDTH);
+	unsigned char** outImg = MemAlloc2D(HEIGHT, WIDTH);
 	Histogram* histogram;
 
 	HuffmanTree huf;
@@ -223,7 +230,6 @@ void main()
 	// make huffman code
 	huf.makeHuffmanCode(&huf.tree[0], { true }, true);
 
-
 	double sum = 0;
 	for (int i = 0; i < huf.huffman.size(); i++)
 	{
@@ -244,7 +250,7 @@ void main()
 	ofstream outFile("mapping_table.txt");
 	for (int i = 0; i < huf.huffman.size(); i++)
 	{
-		outFile << (int)(huf.huffman[i].value) << ", ";
+		outFile << (int)(huf.huffman[i].value) << endl;
 		for (int n = 0; n < huf.huffman[i].code->size(); n++)
 		{
 			if ((*(huf.huffman[i].code))[n])
@@ -254,9 +260,104 @@ void main()
 		}
 		outFile << endl;
 	}
+	outFile.close();
 
+	// save compressed image
+	string saveData = "";
+	for (int y = 0; y < HEIGHT; y++)
+	{
+		for (int x = 0; x < WIDTH; x++)
+		{
+			unsigned char value = oriImg[y][x];
 
-	FileWrite("white.raw", whiteArr2D, HEIGHT, WIDTH);
+			auto it = find_if(huf.huffman.begin(), huf.huffman.end(),
+				[value](const HuffmanCode& h) {return h.value == value; });
+			for (int i = 0; i < ((*it).code)->size(); i++)
+			{
+				if ((*((*it).code))[i])
+					saveData += "1";
+				else
+					saveData += "0";
+			}
+			saveData += "";
+		}
+	}
+
+	ofstream saveFile("compressedImage.hf", ios::binary);
+	unsigned char c = 0;
+
+	for (int i = 0; i < saveData.length(); i++) // saveData.length()
+	{
+		c <<= 1;
+		c += ((int)(saveData[i]) - 48);
+		//std::bitset<8> x(c);
+		//std::cout << x << endl;
+		if (i % 8 == 7)
+		{
+			saveFile << c;
+			c = 0;
+		}
+		if (i == saveData.length()-1)
+		{
+			c <<= 8 - (saveData.length() % 8);
+			saveFile << c;
+		}
+	}
+	saveFile.close();
+
+	// Read Map table
+	vector<MapTable> mapTable;
+	char inputString[100];
+	ifstream inFile("mapping_table.txt");
+	while (!inFile.eof())
+	{
+		MapTable map;
+		inFile.getline(inputString, 100);
+		map.value = atoi(inputString);
+		inFile.getline(inputString, 100);
+		map.code = inputString;
+		mapTable.push_back(map);
+	}
+
+	// decode
+	unsigned char* readData;
+	FILE *compressedImage;
+	compressedImage = fopen("compressedImage.hf", "rb");
+	fseek(compressedImage, 0, SEEK_END);
+	int fileSize = ftell(compressedImage);
+	fseek(compressedImage, 0, SEEK_SET);
+	readData = new unsigned char[fileSize];
+	fread(readData, sizeof(unsigned char), fileSize, compressedImage);
+	fclose(compressedImage);
+
+	string readDataString = "";
+	for (int i = 0; i < fileSize; i++)
+	{
+		for (int n = 0; n < 8; n++)
+		{
+			if (readData[i] & (int)(pow(2, 7 - n)))	// if 1, result is true
+				readDataString += "1";
+			else
+				readDataString += "0";
+		}
+	}
+
+	string temp = "";
+	int count = 0;
+	for (int i = 0; i < readDataString.length(); i++)
+	{
+		temp += readDataString[i];
+		auto it = find_if(mapTable.begin(), mapTable.end(),
+			[temp](const MapTable& m) {return m.code == temp; });
+		if (it != mapTable.end() )
+		{
+			outImg[count / HEIGHT][count % WIDTH] = (*it).value;
+			temp = "";
+			count++;
+		}
+	}
+
+	FileWrite("result.raw", outImg, HEIGHT, WIDTH);
 
 	return;
 }
